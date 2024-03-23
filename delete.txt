@@ -1,0 +1,1 @@
+DATABASE_URL=mysql://u981967018_binosearch:!JIF@zhf7sq(@srv1264.hstgr.io/u981967018_binosearch
