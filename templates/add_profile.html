@@ -100,20 +100,29 @@
                         <div class="row">
                             <div class="col-md-4">
                                 <div class="mb-3">
-                                    <label for="{{ form.picture_1.id_for_label}}" class="form-label">Profile Image</label>
-                                    {{form.picture_1}}
+                                    <label for="{{ form.picture_1.id_for_label }}" class="form-label">
+                                        Profile Image
+                                    </label>
+                                    {{ form.picture_1 }}
+                                    <small id="picture_1_status" class="d-block mt-2"></small>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="mb-3">
-                                    <label for="{{ form.picture_2.id_for_label}}" class="form-label">Extra Image</label>
-                                    {{form.picture_2}}
+                                    <label for="{{ form.picture_2.id_for_label }}" class="form-label">
+                                        Extra Image
+                                    </label>
+                                    {{ form.picture_2 }}
+                                    <small id="picture_2_status" class="d-block mt-2"></small>
                                 </div>
                             </div>
                             <div class="col-md-4">
                                 <div class="mb-3">
-                                    <label for="{{ form.picture_3.id_for_label}}" class="form-label">Extra Image 2 </label>
-                                    {{form.picture_3 }}
+                                    <label for="{{ form.picture_3.id_for_label }}" class="form-label">
+                                        Extra Image 2
+                                    </label>
+                                    {{ form.picture_3 }}
+                                    <small id="picture_3_status" class="d-block mt-2"></small>
                                 </div>
                             </div>
                         </div>
@@ -182,4 +191,191 @@
         </div>
     </div>
 </div>
+
+
+<!-- compress images  -->
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const MAX_SIZE = 1000000; // Strictly below 1 MB
+    const imageFields = [
+        "picture_1",
+        "picture_2",
+        "picture_3"
+    ];
+
+    function showStatus(field, message, color) {
+        const status = document.getElementById(field + "_status");
+        status.textContent = message;
+        status.style.color = color;
+    }
+
+    function loadImage(file) {
+        return new Promise((resolve, reject) => {
+            const image = new Image();
+            const url = URL.createObjectURL(file);
+
+            image.onload = function () {
+                URL.revokeObjectURL(url);
+                resolve(image);
+            };
+
+            image.onerror = function () {
+                URL.revokeObjectURL(url);
+                reject(new Error("This image could not be opened."));
+            };
+
+            image.src = url;
+        });
+    }
+
+    function canvasToBlob(canvas, quality) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob(function (blob) {
+                if (blob) {
+                    resolve(blob);
+                } else {
+                    reject(new Error("Image compression failed."));
+                }
+            }, "image/jpeg", quality);
+        });
+    }
+
+    async function compressImage(file) {
+        const image = await loadImage(file);
+
+        // Limit dimensions to reduce memory use and file size.
+        let width = image.naturalWidth;
+        let height = image.naturalHeight;
+        const maxDimension = 2400;
+
+        if (Math.max(width, height) > maxDimension) {
+            const scale = maxDimension / Math.max(width, height);
+            width = Math.round(width * scale);
+            height = Math.round(height * scale);
+        }
+
+        for (let resizeAttempt = 0; resizeAttempt < 8; resizeAttempt++) {
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+
+            const context = canvas.getContext("2d");
+
+            if (!context) {
+                throw new Error("Your browser could not process this image.");
+            }
+
+            context.drawImage(image, 0, 0, width, height);
+
+            // Try progressively lower JPEG quality.
+            for (const quality of [0.85, 0.75, 0.65, 0.55, 0.45, 0.35]) {
+                const blob = await canvasToBlob(canvas, quality);
+
+                if (blob.size < MAX_SIZE) {
+                    const extension = ".jpg";
+                    const baseName = file.name.replace(/\.[^.]+$/, "");
+
+                    return new File(
+                        [blob],
+                        baseName + extension,
+                        {
+                            type: "image/jpeg",
+                            lastModified: Date.now()
+                        }
+                    );
+                }
+            }
+
+            // If quality reduction is insufficient, resize further.
+            width = Math.round(width * 0.75);
+            height = Math.round(height * 0.75);
+        }
+
+        throw new Error(
+            "This image could not be reduced below 1 MB. Please choose a smaller image."
+        );
+    }
+
+    imageFields.forEach(function (field) {
+        const input = document.getElementById("id_" + field);
+
+        if (!input) return;
+
+        input.setAttribute("accept", "image/*");
+
+        input.addEventListener("change", async function () {
+            const originalFile = input.files[0];
+
+            if (!originalFile) return;
+
+            if (!originalFile.type.startsWith("image/")) {
+                showStatus(field, "Please select a valid image.", "#ff6b6b");
+                input.value = "";
+                return;
+            }
+
+            if (originalFile.size < MAX_SIZE) {
+                showStatus(
+                    field,
+                    "Image size: " +
+                    (originalFile.size / 1024).toFixed(1) +
+                    " KB — already below 1 MB.",
+                    "#7CFC98"
+                );
+                return;
+            }
+
+            showStatus(field, "Compressing image...", "#ffc107");
+            input.disabled = true;
+
+            try {
+                const compressedFile = await compressImage(originalFile);
+
+                // Replace the selected original with the compressed file.
+                const transfer = new DataTransfer();
+                transfer.items.add(compressedFile);
+                input.files = transfer.files;
+
+                showStatus(
+                    field,
+                    "Compressed successfully: " +
+                    (compressedFile.size / 1024).toFixed(1) +
+                    " KB",
+                    "#7CFC98"
+                );
+            } catch (error) {
+                input.value = "";
+                showStatus(field, error.message, "#ff6b6b");
+            } finally {
+                input.disabled = false;
+            }
+        });
+    });
+
+    // Prevent submission while any selected image is still being processed.
+    const form = document.querySelector('form[enctype="multipart/form-data"]');
+
+    if (form) {
+        form.addEventListener("submit", function (event) {
+            for (const field of imageFields) {
+                const input = document.getElementById("id_" + field);
+
+                if (input && input.files.length > 0 &&
+                    input.files[0].size >= MAX_SIZE) {
+                    event.preventDefault();
+                    showStatus(
+                        field,
+                        "This image is still over 1 MB. Please select it again.",
+                        "#ff6b6b"
+                    );
+                    input.focus();
+                    return;
+                }
+            }
+        });
+    }
+});
+</script>
+
 {% endblock %}
