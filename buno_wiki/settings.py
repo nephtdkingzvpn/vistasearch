@@ -19,9 +19,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = ['vistasearch.com', 'www.vistasearch.com', '127.0.0.1', 'localhost']
+ALLOWED_HOSTS = os.getenv(
+    "ALLOWED_HOSTS",
+    "localhost,127.0.0.1"
+).split(",")
 
 
 # Application definition
@@ -83,7 +86,7 @@ DATABASES = {
     }
 }
 
-# DATABASES['default'] = dj_database_url.config(default=os.environ['DATABASE_URL'], engine='django_cockroachdb')
+DATABASES['default'] = dj_database_url.config(default=os.environ['DATABASE_URL'], engine='django_cockroachdb')
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators
